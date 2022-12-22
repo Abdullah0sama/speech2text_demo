@@ -2,16 +2,22 @@ const player = document.getElementById('player');
 const stopbtn = document.querySelector('#stopbtn');
 const toggleRecordingBtn = document.querySelector('#toggleRecordingBtn');
 const pauseBtn = document.querySelector('#pauseBtn');
+const submitBtn = document.querySelector('#submitBtn');
 
 class MediaRecordHandler {
     mediaRecorder;
     chunks = [];
     stream;
+    mimeType;
+    canSend = false;
+    audioBlob;
     setStream(stream) {
         this.stream = stream;
         this.mediaRecorder = new MediaRecorder(stream);
         this.mediaRecorder.ondataavailable = this.onDataAvailable.bind(this)
         this.mediaRecorder.onstop = this.onstop.bind(this)
+        this.mimeType = this.mediaRecorder.mimeType
+        console.log(this.mediaRecorder.mimeType)
     }
 
     onDataAvailable(e) {
@@ -19,6 +25,7 @@ class MediaRecordHandler {
     }
 
     async start() {
+        this.canSend = false;
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             console.log("getUserMedia supported.");
             try {
@@ -50,9 +57,10 @@ class MediaRecordHandler {
     async onstop(e) {
         console.log('Record stopped status: ', this.mediaRecorder.state)
         console.log('stopped', this.chunks)
-        setAudioSrc(this.chunks)
+        this.canSend = true;
+        this.audioBlob = new Blob(this.chunks, { type: "audio/ogg; codecs=opus" })
+        setAudioSrc(this.audioBlob)
         this.chunks = []
-        this.stopStream();
     }
 
     stop() {
@@ -72,7 +80,7 @@ toggleRecordingBtn.addEventListener('click', toggleRecording)
 const contraint = {
     audio: true
 }
-
+submitBtn.addEventListener('click', sendAudioToServer);
 
 
 function toggleRecording(e) {
@@ -81,8 +89,46 @@ function toggleRecording(e) {
     else if (state == 'paused') e.target.textContent = 'resume'
 }
 
-function setAudioSrc (chunks) {
-        const audioBlob = new Blob(chunks, { type: "audio/ogg; codecs=opus" })
-        const audioUrl = window.URL.createObjectURL(audioBlob)
-        player.src = audioUrl
-    }
+function setAudioSrc (audioBlob) {
+    const audioUrl = window.URL.createObjectURL(audioBlob)
+    player.src = audioUrl
+}
+
+async function sendAudioToServer(e) {
+    const audioBlob = mediaRecorderHandler.audioBlob
+    const mimeType = mediaRecorderHandler.mimeType
+    const base64 = await blobToBase64(audioBlob)
+    console.log(base64)
+    fetch('/speech2textQ/check', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            audio: base64,
+            mimeType: mimeType
+        })
+    })
+    .then((res) => {
+        console.log(res)
+    })
+    .catch((err) => {
+        console.log(err)
+    })
+}  
+
+function sendData(e) {
+    sendAudioToServer(mediaRecorderHandler.audioBlob, mediaRecorderHandler.mimeType)
+}
+
+const blobToBase64 = blob => {
+    const reader = new FileReader();
+    reader.readAsDataURL(blob);
+    return new Promise(resolve => {
+        reader.onloadend = () => {
+            console.log(reader.result.split(',')[1])
+        resolve(reader.result.split(',')[1]);
+        };
+    });
+};
+  
