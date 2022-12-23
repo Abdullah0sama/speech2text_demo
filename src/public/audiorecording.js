@@ -13,11 +13,13 @@ class MediaRecordHandler {
     audioBlob;
     setStream(stream) {
         this.stream = stream;
-        this.mediaRecorder = new MediaRecorder(stream);
+        console.log(this.stream, this.stream.getAudioTracks(), this.stream.getAudioTracks()[0].getConstraints())
+        this.mediaRecorder = new MediaRecorder(stream, {
+            mimeType: "audio/webm"
+        });
         this.mediaRecorder.ondataavailable = this.onDataAvailable.bind(this)
         this.mediaRecorder.onstop = this.onstop.bind(this)
         this.mimeType = this.mediaRecorder.mimeType
-        console.log(this.mediaRecorder.mimeType)
     }
 
     onDataAvailable(e) {
@@ -58,7 +60,7 @@ class MediaRecordHandler {
         console.log('Record stopped status: ', this.mediaRecorder.state)
         console.log('stopped', this.chunks)
         this.canSend = true;
-        this.audioBlob = new Blob(this.chunks, { type: "audio/ogg; codecs=opus" })
+        this.audioBlob = new Blob(this.chunks, { type: "audio/webm" })
         setAudioSrc(this.audioBlob)
         this.chunks = []
     }
@@ -91,6 +93,9 @@ function toggleRecording(e) {
 
 function setAudioSrc (audioBlob) {
     const audioUrl = window.URL.createObjectURL(audioBlob)
+    const download = document.querySelector('#download')
+    download.href = audioUrl
+    download.download = "output"
     player.src = audioUrl
 }
 
@@ -98,7 +103,6 @@ async function sendAudioToServer(e) {
     const audioBlob = mediaRecorderHandler.audioBlob
     const mimeType = mediaRecorderHandler.mimeType
     const base64 = await blobToBase64(audioBlob)
-    console.log(base64)
     fetch('/speech2textQ/check', {
         method: 'POST',
         headers: {
@@ -126,7 +130,8 @@ const blobToBase64 = blob => {
     reader.readAsDataURL(blob);
     return new Promise(resolve => {
         reader.onloadend = () => {
-            console.log(reader.result.split(',')[1])
+            console.log(reader.result)
+            // console.log(reader.result.split(',')[1])
         resolve(reader.result.split(',')[1]);
         };
     });
