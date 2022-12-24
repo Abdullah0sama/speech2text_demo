@@ -14,9 +14,24 @@ app.get('/', (req, res) => {
     res.sendFile('views/main.html', { root: __dirname });
 })
 
-app.post('/speech2textQ/check', (req, res) => {
-    transcriptSpeech(req.body)
-    res.status(200).end();
+const sentences = [
+    'He found rain fascinating yet unpleasant.',
+    'We need to rent a room for our party.',
+    'We should play with legos at camp.',
+    'Nancy was proud that she ran a tight shipwreck.'
+]
+app.get('/speech2text/', (req, res) => {
+    const id = Math.floor(Math.random() * sentences.length);
+    res.send({ sentence: sentences[id], id })
+})
+app.post('/speech2textQ/check', async (req, res) => {
+    const transcript = await transcriptSpeech(req.body.audio)
+    
+    const transcription = transcript!
+    .map(result => result.alternatives![0].transcript)
+    .join('\n');
+    console.log(`Transcription: ${transcription}`);
+    res.status(200).send({ data: checkAnswer(transcript, sentences[req.body.id])}).end();
 
 })
 app.listen(3000, () => {
@@ -24,18 +39,18 @@ app.listen(3000, () => {
 })
 
 
-async function transcriptSpeech(data: audioRequest) {
-    console.log(data)
+async function transcriptSpeech(audioBase64: string) {
+    // console.log(data)
     const speech = new SpeechClient({
         credentials: s
     })
 
     const audio = {
-        content: data.audio
+        content: audioBase64
     }
     const config: any = {
         languageCode: 'en-US',
-        encoding: "OGG_OPUS",
+        encoding: "FLAC",
         sampleRateHertz: '48000'
     }
     const request = {
@@ -45,17 +60,39 @@ async function transcriptSpeech(data: audioRequest) {
 
     const [response] = await speech.recognize(request)
     if (!response.results) return;
-    console.log(response)
-    const transcription = response.results
-    .map(result => result.alternatives![0].transcript)
-    .join('\n');
-    console.log(`Transcription: ${transcription}`);
+    console.dir(response, {depth: null})
+    return response.results;
+
         
 
 }
 
 
-interface audioRequest {
-    audio: string,
-    mimeType: string
+function strip(str: string) {
+    return str.replace(/[^\w\s\']|_/g, "").replace(/\s+/g, " ").toLowerCase();
+}
+
+function checkAnswer(transcript: any, orignalSentence: string) {
+
+    let transcription: string = transcript
+        .map((result: any) => result.alternatives![0].transcript)
+        .join('\n');
+    transcription = strip(transcription)
+    let transcriptionS = transcription.split(' ')
+    let sentence = strip(orignalSentence)
+    const orgWords = orignalSentence.split(' ')
+    let isSimilar: boolean = true
+    console.log(transcription, sentence)
+
+    const matchedWords = sentence.split(' ').map((orgWord, index) => {
+        const ret = {
+            word: orgWords[index],
+            matched: false
+        }
+        if (index < transcriptionS.length && transcriptionS[index] == orgWord) ret.matched = true; 
+        else isSimilar = false
+
+        return ret;
+    })
+    return {isSimilar, matchedWords}
 }
